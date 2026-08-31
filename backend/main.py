@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from models.safety import Location, SafetyAssessment
 from services.geocoding import geocode_location
+from services.weather import get_current_weather
 
 app = FastAPI(
     title="SafeLens AI API",
@@ -70,3 +71,25 @@ async def geocode(q: str = Query(..., min_length=2)):
         factors=["No safety data has been collected yet"],
         assessed_at=datetime.now(timezone.utc),
     )
+@app.get("/api/v1/weather")
+async def weather(
+    latitude: float = Query(..., ge=-90, le=90),
+    longitude: float = Query(..., ge=-180, le=180),
+):
+    result = await get_current_weather(latitude, longitude)
+
+    if result is None:
+        return {
+            "found": False,
+            "latitude": latitude,
+            "longitude": longitude,
+        }
+
+    return {
+        "found": True,
+        "requested_location": {
+            "latitude": latitude,
+            "longitude": longitude,
+        },
+        "weather": result,
+    }
