@@ -1,4 +1,19 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { checkBackendHealth } from "@/lib/api";
 export default function Home() {
+  const [backendStatus, setBackendStatus] = useState("Checking backend...");
+
+useEffect(() => {
+  checkBackendHealth()
+    .then(() => {
+      setBackendStatus("Backend connected");
+    })
+    .catch(() => {
+      setBackendStatus("Backend unavailable");
+    });
+}, []);
   return (
     <main className="min-h-screen bg-slate-950 text-white">
       <section className="mx-auto flex min-h-screen max-w-7xl flex-col px-6 py-10 lg:px-10">
@@ -30,6 +45,9 @@ export default function Home() {
               About
             </a>
           </div>
+          <div className="hidden text-sm text-slate-500 md:block">
+  {backendStatus}
+</div>
 
           <button className="rounded-full border border-slate-700 px-5 py-2 text-sm font-medium transition hover:border-cyan-400 hover:text-cyan-300">
             Get Started
