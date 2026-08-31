@@ -4,7 +4,7 @@ from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from models.safety import Location, SafetyAssessment
-
+from services.geocoding import geocode_location
 
 app = FastAPI(
     title="SafeLens AI API",
@@ -47,7 +47,21 @@ def get_safety(
         latitude=latitude,
         longitude=longitude,
     )
+@app.get("/api/v1/geocode")
+async def geocode(q: str = Query(..., min_length=2)):
+    result = await geocode_location(q)
 
+    if result is None:
+        return {
+            "found": False,
+            "query": q,
+        }
+
+    return {
+        "found": True,
+        "query": q,
+        **result,
+    }
     return SafetyAssessment(
         location=location,
         score=None,
