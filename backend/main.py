@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from models.safety import Location, SafetyAssessment
 from services.geocoding import geocode_location
 from services.weather import get_current_weather
-
+from services.places import get_nearby_places
 app = FastAPI(
     title="SafeLens AI API",
     description="Backend API for the SafeLens AI safety intelligence platform.",
@@ -92,4 +92,27 @@ async def weather(
             "longitude": longitude,
         },
         "weather": result,
+    }
+@app.get("/api/v1/places")
+async def nearby_places(
+    latitude: float = Query(..., ge=-90, le=90),
+    longitude: float = Query(..., ge=-180, le=180),
+    radius_m: int = Query(1000, ge=100, le=5000),
+):
+    places = await get_nearby_places(
+        latitude,
+        longitude,
+        radius_m,
+    )
+
+    return {
+        "latitude": latitude,
+        "longitude": longitude,
+        "radius_m": radius_m,
+        "source": "openstreetmap",
+        "count": len(places),
+        "places": [
+            place.model_dump()
+            for place in places
+        ],
     }

@@ -28,12 +28,20 @@ class Incident(BaseModel):
     source: str
     description: str | None = None
 
-
+class NearbyPlace(BaseModel):
+    name: str
+    category: str
+    latitude: float
+    longitude: float
+    distance_m: float | None = None
+    source: str
+    
 class SafetyContext(BaseModel):
     location: Location
     observed_at: datetime
     signals: list[SafetySignal] = Field(default_factory=list)
     incidents: list[Incident] = Field(default_factory=list)
+    nearby_places: list[NearbyPlace] = Field(default_factory=list)
     data_sources: list[str] = Field(default_factory=list)
 
 
