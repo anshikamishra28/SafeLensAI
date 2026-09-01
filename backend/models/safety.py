@@ -35,13 +35,19 @@ class NearbyPlace(BaseModel):
     longitude: float
     distance_m: float | None = None
     source: str
-    
+class Evidence(BaseModel):
+    type: str
+    status: str
+    source: str
+    observed_at: datetime | None = None
+    data: dict = Field(default_factory=dict)  
 class SafetyContext(BaseModel):
     location: Location
     observed_at: datetime
     signals: list[SafetySignal] = Field(default_factory=list)
     incidents: list[Incident] = Field(default_factory=list)
     nearby_places: list[NearbyPlace] = Field(default_factory=list)
+    evidence: list[Evidence] = Field(default_factory=list)
     data_sources: list[str] = Field(default_factory=list)
 
 

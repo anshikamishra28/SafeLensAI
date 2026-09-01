@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from models.safety import Location, SafetyAssessment
+from models.safety import Location, SafetyAssessment, Evidence
 from services.geocoding import geocode_location
 from services.weather import get_current_weather
 from services.places import get_nearby_places
@@ -115,4 +115,93 @@ async def nearby_places(
             place.model_dump()
             for place in places
         ],
+    }
+@app.get("/api/v1/context")
+async def get_safety_context(
+    latitude: float = Query(..., ge=-90, le=90),
+    longitude: float = Query(..., ge=-180, le=180),
+    radius_m: int = Query(1000, ge=100, le=5000),
+):
+    observed_at = datetime.now(timezone.utc)
+
+    location = Location(
+        latitude=latitude,
+        longitude=longitude,
+    )
+
+    weather = await get_current_weather(
+        latitude,
+        longitude,
+    )
+
+    places = await get_nearby_places(
+        latitude,
+        longitude,
+        radius_m,
+    )
+
+    evidence = []
+
+    if weather is not None:
+        evidence.append(
+            Evidence(
+                type="weather",
+                status="available",
+                source="open-meteo",
+                observed_at=(
+                    datetime.fromisoformat(
+                        weather["observed_at"]
+                    ).replace(tzinfo=timezone.utc)
+                    if weather.get("observed_at")
+                    else None
+                ),
+                data=weather,
+            )
+        )
+    else:
+        evidence.append(
+            Evidence(
+                type="weather",
+                status="unavailable",
+                source="open-meteo",
+                observed_at=None,
+                data={},
+            )
+        )
+
+    evidence.append(
+        Evidence(
+            type="nearby_places",
+            status="available" if places else "no_data",
+            source="openstreetmap",
+            observed_at=observed_at,
+            data={
+                "radius_m": radius_m,
+                "count": len(places),
+                "places": [
+                    place.model_dump()
+                    for place in places
+                ],
+            },
+        )
+    )
+
+    return {
+        "location": location.model_dump(),
+        "observed_at": observed_at,
+        "evidence": [
+            item.model_dump()
+            for item in evidence
+        ],
+        "nearby_places": [
+            place.model_dump()
+            for place in places
+        ],
+        "data_sources": sorted(
+            {
+                item.source
+                for item in evidence
+                if item.status == "available"
+            }
+        ),
     }
