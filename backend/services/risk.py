@@ -152,7 +152,7 @@ def assess_safety(context: SafetyContext) -> SafetyAssessment:
     if risk_evidence_count == 0:
         factors.append(
             "No verified incident or significant environmental "
-            "risk evidence is currently available."
+"risk evidence is currently available."
         )
 
         return SafetyAssessment(
