@@ -3,7 +3,15 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from models.safety import Location, SafetyAssessment, Evidence
+from models.safety import (
+    Evidence,
+    Location,
+    SafetyAssessment,
+    SafetyContext,
+)
+
+from services.risk import assess_safety
+
 from services.geocoding import geocode_location
 from services.weather import get_current_weather
 from services.places import get_nearby_places
@@ -205,3 +213,59 @@ async def get_safety_context(
             }
         ),
     }
+@app.get("/api/v1/assessment", response_model=SafetyAssessment)
+async def get_safety_assessment(
+    latitude: float = Query(...),
+    longitude: float = Query(...),
+    radius_m: int = Query(1000, ge=100, le=5000),
+):
+    location = Location(
+        latitude=latitude,
+        longitude=longitude,
+    )
+
+    weather = await get_current_weather(latitude, longitude)
+    nearby_places = await get_nearby_places(
+        latitude,
+        longitude,
+        radius_m,
+    )
+
+    context = SafetyContext(
+        location=location,
+        observed_at=datetime.now(timezone.utc),
+        evidence=[
+            Evidence(
+                type="weather",
+                status="available",
+                source="open-meteo",
+                observed_at=(
+                    datetime.fromisoformat(
+                        weather["observed_at"].replace("Z", "+00:00")
+                    )
+                    if weather.get("observed_at")
+                    else None
+                ),
+                data=weather,
+            ),
+            Evidence(
+                type="nearby_places",
+                status="available",
+                source="openstreetmap",
+                observed_at=datetime.now(timezone.utc),
+                data={
+                    "places": [
+                        place.model_dump()
+                        for place in nearby_places
+                    ]
+                },
+            ),
+        ],
+        nearby_places=nearby_places,
+        data_sources=[
+            "open-meteo",
+            "openstreetmap",
+        ],
+    )
+
+    return assess_safety(context)
