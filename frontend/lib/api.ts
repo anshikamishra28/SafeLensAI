@@ -10,3 +10,68 @@ export async function checkBackendHealth() {
 
   return response.json();
 }
+export type SafetyAssessment = {
+  location: {
+    latitude: number;
+    longitude: number;
+    address: string | null;
+  };
+  score: number | null;
+  confidence: number;
+  risk_level: "unknown" | "low" | "moderate" | "high" | "critical";
+  factors: string[];
+  assessed_at: string;
+};
+
+export async function getSafetyAssessment(
+  latitude: number,
+  longitude: number,
+  radiusM = 1000,
+): Promise<SafetyAssessment> {
+  const params = new URLSearchParams({
+    latitude: String(latitude),
+    longitude: String(longitude),
+    radius_m: String(radiusM),
+  });
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/assessment?${params.toString()}`,
+    {
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error("Safety assessment request failed");
+  }
+
+  return response.json();
+}
+export type GeocodedLocation = {
+  found: boolean;
+  query: string;
+  latitude?: number;
+  longitude?: number;
+  display_name?: string;
+};
+
+export async function geocodeLocation(
+  query: string,
+): Promise<GeocodedLocation> {
+  const params = new URLSearchParams({
+    q: query,
+  });
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/geocode?${params.toString()}`,
+    {
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error("Location search failed");
+  }
+
+  return response.json();
+}
