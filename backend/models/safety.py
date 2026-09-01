@@ -64,3 +64,11 @@ class SafetyAssessment(BaseModel):
     ]
     factors: list[str] = Field(default_factory=list)
     assessed_at: datetime
+
+
+class SafetyAssessmentResponse(BaseModel):
+    assessment: SafetyAssessment
+    weather: dict | None = None
+    nearby_places: list[NearbyPlace] = Field(default_factory=list)
+    data_sources: list[str] = Field(default_factory=list)
+    data_sources: list[str] = Field(default_factory=list)

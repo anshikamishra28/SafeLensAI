@@ -7,14 +7,16 @@ from models.safety import (
     Evidence,
     Location,
     SafetyAssessment,
+    SafetyAssessmentResponse,
     SafetyContext,
 )
 
 from services.risk import assess_safety
-
 from services.geocoding import geocode_location
 from services.weather import get_current_weather
 from services.places import get_nearby_places
+
+
 app = FastAPI(
     title="SafeLens AI API",
     description="Backend API for the SafeLens AI safety intelligence platform.",
@@ -56,6 +58,17 @@ def get_safety(
         latitude=latitude,
         longitude=longitude,
     )
+
+    return SafetyAssessment(
+        location=location,
+        score=None,
+        confidence=0.0,
+        risk_level="unknown",
+        factors=["No safety data has been collected yet"],
+        assessed_at=datetime.now(timezone.utc),
+    )
+
+
 @app.get("/api/v1/geocode")
 async def geocode(q: str = Query(..., min_length=2)):
     result = await geocode_location(q)
@@ -71,14 +84,8 @@ async def geocode(q: str = Query(..., min_length=2)):
         "query": q,
         **result,
     }
-    return SafetyAssessment(
-        location=location,
-        score=None,
-        confidence=0.0,
-        risk_level="unknown",
-        factors=["No safety data has been collected yet"],
-        assessed_at=datetime.now(timezone.utc),
-    )
+
+
 @app.get("/api/v1/weather")
 async def weather(
     latitude: float = Query(..., ge=-90, le=90),
@@ -101,6 +108,8 @@ async def weather(
         },
         "weather": result,
     }
+
+
 @app.get("/api/v1/places")
 async def nearby_places(
     latitude: float = Query(..., ge=-90, le=90),
@@ -124,6 +133,8 @@ async def nearby_places(
             for place in places
         ],
     }
+
+
 @app.get("/api/v1/context")
 async def get_safety_context(
     latitude: float = Query(..., ge=-90, le=90),
@@ -151,18 +162,19 @@ async def get_safety_context(
     evidence = []
 
     if weather is not None:
+        weather_observed_at = None
+
+        if weather.get("observed_at"):
+            weather_observed_at = datetime.fromisoformat(
+                weather["observed_at"].replace("Z", "+00:00")
+            )
+
         evidence.append(
             Evidence(
                 type="weather",
                 status="available",
                 source="open-meteo",
-                observed_at=(
-                    datetime.fromisoformat(
-                        weather["observed_at"]
-                    ).replace(tzinfo=timezone.utc)
-                    if weather.get("observed_at")
-                    else None
-                ),
+                observed_at=weather_observed_at,
                 data=weather,
             )
         )
@@ -213,10 +225,15 @@ async def get_safety_context(
             }
         ),
     }
-@app.get("/api/v1/assessment", response_model=SafetyAssessment)
+
+
+@app.get(
+    "/api/v1/assessment",
+    response_model=SafetyAssessmentResponse,
+)
 async def get_safety_assessment(
-    latitude: float = Query(...),
-    longitude: float = Query(...),
+    latitude: float = Query(..., ge=-90, le=90),
+    longitude: float = Query(..., ge=-180, le=180),
     radius_m: int = Query(1000, ge=100, le=5000),
 ):
     location = Location(
@@ -224,48 +241,87 @@ async def get_safety_assessment(
         longitude=longitude,
     )
 
-    weather = await get_current_weather(latitude, longitude)
+    weather = await get_current_weather(
+        latitude,
+        longitude,
+    )
+
     nearby_places = await get_nearby_places(
         latitude,
         longitude,
         radius_m,
     )
 
-    context = SafetyContext(
-        location=location,
-        observed_at=datetime.now(timezone.utc),
-        evidence=[
+    evidence = []
+
+    if weather is not None:
+        weather_observed_at = None
+
+        if weather.get("observed_at"):
+            weather_observed_at = datetime.fromisoformat(
+                weather["observed_at"].replace("Z", "+00:00")
+            )
+
+        evidence.append(
             Evidence(
                 type="weather",
                 status="available",
                 source="open-meteo",
-                observed_at=(
-                    datetime.fromisoformat(
-                        weather["observed_at"].replace("Z", "+00:00")
-                    )
-                    if weather.get("observed_at")
-                    else None
-                ),
+                observed_at=weather_observed_at,
                 data=weather,
-            ),
+            )
+        )
+    else:
+        evidence.append(
             Evidence(
-                type="nearby_places",
-                status="available",
-                source="openstreetmap",
-                observed_at=datetime.now(timezone.utc),
-                data={
-                    "places": [
-                        place.model_dump()
-                        for place in nearby_places
-                    ]
-                },
-            ),
-        ],
+                type="weather",
+                status="unavailable",
+                source="open-meteo",
+                observed_at=None,
+                data={},
+            )
+        )
+
+    evidence.append(
+        Evidence(
+            type="nearby_places",
+            status="available" if nearby_places else "no_data",
+            source="openstreetmap",
+            observed_at=datetime.now(timezone.utc),
+            data={
+                "radius_m": radius_m,
+                "count": len(nearby_places),
+                "places": [
+                    place.model_dump()
+                    for place in nearby_places
+                ],
+            },
+        )
+    )
+
+    context = SafetyContext(
+        location=location,
+        observed_at=datetime.now(timezone.utc),
+        evidence=evidence,
         nearby_places=nearby_places,
         data_sources=[
-            "open-meteo",
-            "openstreetmap",
+            item.source
+            for item in evidence
+            if item.status == "available"
         ],
     )
 
-    return assess_safety(context)
+    assessment = assess_safety(context)
+
+    return SafetyAssessmentResponse(
+        assessment=assessment,
+        weather=weather,
+        nearby_places=nearby_places,
+        data_sources=sorted(
+            {
+                item.source
+                for item in evidence
+                if item.status == "available"
+            }
+        ),
+    )
