@@ -45,11 +45,59 @@ export type WeatherData = {
   visibility_m: number;
 };
 
+export type PoliceStation = {
+  name: string;
+  latitude: number;
+  longitude: number;
+  distance_m: number;
+};
+
+export type NearestPoliceStationResponse = {
+  station: PoliceStation | null;
+  source: string;
+  message?: string;
+};
+
+export type PredictionFeatures = {
+  weather_available: boolean;
+  precipitation_mm: number | null;
+  wind_speed_kmh: number | null;
+  visibility_m: number | null;
+  nearby_hospitals: number;
+  nearby_pharmacies: number;
+  evidence_count: number;
+  historical_crime_available: boolean;
+  historical_crime_records: number;
+};
+
+export type Incident = {
+  location: {
+    latitude: number;
+    longitude: number;
+    address: string | null;
+  };
+  incident_type: string;
+  severity: "low" | "medium" | "high" | "critical";
+  reported_at: string;
+  verified: boolean;
+  source: string;
+  description: string | null;
+};
+export type SafetyPrediction = {
+  score: number | null;
+  risk_level: "unknown" | "low" | "moderate" | "high" | "critical";
+  confidence: number;
+  factors: string[];
+  method: string;
+};
 export type SafetyAssessmentResponse = {
   assessment: SafetyAssessment;
   weather: WeatherData | null;
   nearby_places: NearbyPlace[];
+  incidents: Incident[];
   data_sources: string[];
+  prediction_features: PredictionFeatures;
+  prediction: SafetyPrediction;
 };
 
 export async function getSafetyAssessment(
@@ -76,6 +124,30 @@ export async function getSafetyAssessment(
 
   return response.json();
 }
+
+export async function getNearestPoliceStation(
+  latitude: number,
+  longitude: number,
+): Promise<NearestPoliceStationResponse> {
+  const params = new URLSearchParams({
+    latitude: String(latitude),
+    longitude: String(longitude),
+  });
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/police-stations/nearest?${params.toString()}`,
+    {
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error("Nearest police station request failed");
+  }
+
+  return response.json();
+}
+
 
 export type GeocodedLocation = {
   found: boolean;

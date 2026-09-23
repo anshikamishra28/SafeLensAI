@@ -41,6 +41,7 @@ class Evidence(BaseModel):
     source: str
     observed_at: datetime | None = None
     data: dict = Field(default_factory=dict)  
+
 class SafetyContext(BaseModel):
     location: Location
     observed_at: datetime
@@ -49,6 +50,7 @@ class SafetyContext(BaseModel):
     nearby_places: list[NearbyPlace] = Field(default_factory=list)
     evidence: list[Evidence] = Field(default_factory=list)
     data_sources: list[str] = Field(default_factory=list)
+    historical_crime: list[dict] = Field(default_factory=list)
 
 
 class SafetyAssessment(BaseModel):
@@ -70,5 +72,7 @@ class SafetyAssessmentResponse(BaseModel):
     assessment: SafetyAssessment
     weather: dict | None = None
     nearby_places: list[NearbyPlace] = Field(default_factory=list)
+    incidents: list[Incident] = Field(default_factory=list)
     data_sources: list[str] = Field(default_factory=list)
-    data_sources: list[str] = Field(default_factory=list)
+    prediction_features: dict = Field(default_factory=dict)
+    prediction: dict = Field(default_factory=dict)

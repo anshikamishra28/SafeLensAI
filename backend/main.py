@@ -1,4 +1,9 @@
 from datetime import datetime, timezone
+from services.prediction import (
+    build_prediction_features,
+    predict_safety_from_features,
+)
+from services.crime_history import get_bengaluru_crime_history
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,6 +21,7 @@ from services.geocoding import geocode_location
 from services.weather import get_current_weather
 from services.places import get_nearby_places
 
+from services.police_stations import find_nearest_police_station
 
 app = FastAPI(
     title="SafeLens AI API",
@@ -240,6 +246,7 @@ async def get_safety_assessment(
         latitude=latitude,
         longitude=longitude,
     )
+    historical_crime = get_bengaluru_crime_history()
 
     weather = await get_current_weather(
         latitude,
@@ -304,6 +311,8 @@ async def get_safety_assessment(
         observed_at=datetime.now(timezone.utc),
         evidence=evidence,
         nearby_places=nearby_places,
+        historical_crime=historical_crime,
+        
         data_sources=[
             item.source
             for item in evidence
@@ -313,10 +322,19 @@ async def get_safety_assessment(
 
     assessment = assess_safety(context)
 
+    prediction_features = build_prediction_features(
+    context
+    )
+
+    prediction = predict_safety_from_features(
+    prediction_features
+    )
     return SafetyAssessmentResponse(
         assessment=assessment,
         weather=weather,
         nearby_places=nearby_places,
+        prediction_features=prediction_features,
+        prediction=prediction,
         data_sources=sorted(
             {
                 item.source
@@ -325,3 +343,130 @@ async def get_safety_assessment(
             }
         ),
     )
+
+
+@app.get("/api/v1/police-stations/nearest")
+def nearest_police_station(
+    latitude: float,
+    longitude: float,
+):
+    station = find_nearest_police_station(latitude, longitude)
+
+    if station is None:
+        return {
+            "station": None,
+            "message": "No police station data is available.",
+        }
+
+    return {
+        "station": station,
+        "source": "bengaluru-police-station-kml",
+    }
+@app.get("/api/v1/prediction/features")
+async def prediction_features(
+    latitude: float = Query(..., ge=-90, le=90),
+    longitude: float = Query(..., ge=-180, le=180),
+    radius_m: int = Query(1000, ge=100, le=5000),
+):
+    location = Location(
+        latitude=latitude,
+        longitude=longitude,
+    )
+
+    historical_crime = get_bengaluru_crime_history()
+
+    weather = await get_current_weather(
+        latitude,
+        longitude,
+    )
+
+    nearby_places = await get_nearby_places(
+        latitude,
+        longitude,
+        radius_m,
+    )
+
+    evidence = []
+
+    if weather is not None:
+        weather_observed_at = None
+
+        if weather.get("observed_at"):
+            weather_observed_at = datetime.fromisoformat(
+                weather["observed_at"].replace("Z", "+00:00")
+            )
+
+        evidence.append(
+            Evidence(
+                type="weather",
+                status="available",
+                source="open-meteo",
+                observed_at=weather_observed_at,
+                data=weather,
+            )
+        )
+
+    evidence.append(
+        Evidence(
+            type="nearby_places",
+            status="available" if nearby_places else "no_data",
+            source="openstreetmap",
+            observed_at=datetime.now(timezone.utc),
+            data={
+                "radius_m": radius_m,
+                "count": len(nearby_places),
+                "places": [
+                    place.model_dump()
+                    for place in nearby_places
+                ],
+            },
+        )
+    )
+
+    context = SafetyContext(
+        location=location,
+        observed_at=datetime.now(timezone.utc),
+        evidence=evidence,
+        nearby_places=nearby_places,
+        historical_crime=historical_crime,
+        data_sources=[
+            item.source
+            for item in evidence
+            if item.status == "available"
+        ],
+    )
+
+    features = build_prediction_features(context)
+
+    prediction = predict_safety_from_features(
+        features
+    )
+
+    return {
+        "location": location.model_dump(),
+        "features": features,
+        "prediction": prediction,
+        "data_sources": sorted(
+            {
+                item.source
+                for item in evidence
+                if item.status == "available"
+            }
+        ),
+    }
+@app.get("/api/v1/crime-history")
+def crime_history():
+    records = get_bengaluru_crime_history()
+
+    return {
+        "scope": "Bengaluru city",
+        "year": 2023,
+        "source": "OpenCity Bengaluru Crime Data 2023",
+        "geographic_scope": "city-level aggregate",
+        "warning": (
+            "Historical aggregate data only. "
+            "These records are not location-specific incidents."
+        ),
+        "count": len(records),
+        "records": records,
+    }
